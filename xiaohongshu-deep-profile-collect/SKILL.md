@@ -1,18 +1,19 @@
 ---
 name: xiaohongshu-deep-profile-collect
-description: 采集小红书个人主页的全量信息，包括基础资料、全部发布笔记、收藏笔记列表（全量）、点赞笔记列表（全量）
-version: 2.0.0
+description: 采集小红书个人主页的全量信息，包括基础资料、全部发布笔记（含详情正文和标签）、收藏笔记列表（全量）、点赞笔记列表（全量）
+version: 3.0.0
 ---
 
 # 小红书个人主页深度采集
 
 ## 概述
 
-本 Skill 用于采集小红书当前登录用户的个人主页全量信息。通过 XHR 拦截技术突破虚拟滚动限制，实现收藏和点赞列表的全量采集。
+本 Skill 用于采集小红书当前登录用户的个人主页全量信息。通过 XHR 拦截技术突破虚拟滚动限制，实现收藏和点赞列表的全量采集。v3.0 新增笔记详情采集（正文内容+标签），通过逐条点击笔记打开详情页并从 `__INITIAL_STATE__` 提取结构化数据。
 
 **采集内容**：
 - 基础资料（昵称/小红书号/IP属地/简介/学校/关注粉丝获赞数）
 - 全部发布笔记（标题列表）
+- **全部发布笔记的详情内容（正文 desc + 标签 tagList）**
 - 收藏笔记列表（全量，含标题/作者/点赞数/类型）
 - 点赞笔记列表（全量，含标题/作者/点赞数/类型）
 
@@ -128,6 +129,129 @@ async () => {
 **输出**：`noteCount`、`notes`（笔记标题列表）、`fullText`（含基础资料）
 
 > ⚠️ **步骤4只是采集"笔记"tab的数据。收藏和点赞是独立的 tab，必须分别导航过去才能采集。即使笔记数为0，也要继续执行步骤5-10采集收藏和点赞。**
+
+---
+
+### 步骤4.5：采集每条笔记的详情内容和标签（逐条点击）
+
+**核心技术**：小红书笔记详情（正文 desc、标签 tagList）无法通过列表页 DOM 或 API 直接获取。必须逐条点击笔记打开详情页（新 tab），从详情页的 `window.__INITIAL_STATE__.note.noteDetailMap` 中提取结构化数据。
+
+**⚠️ 关键认知**：
+- 点击 `a.cover` 链接会在**新 tab** 中打开笔记详情页（不是弹窗）
+- 必须在**新 tab** 中执行脚本提取数据，不是在原 tab
+- 提取完毕后**必须关闭新 tab**，防止 tab 堆积
+- 视频类笔记的 desc 可能为空，这是正常的
+
+**工具**：`chrome_execute_script` + `get_windows_and_tabs` + `chrome_close_tabs`
+
+**流程**：对每条笔记重复以下子步骤：
+
+#### 子步骤 A：在个人主页点击笔记封面
+
+**工具**：`chrome_execute_script`
+
+**参数**：
+- `tabId`: `{个人主页 tabId}`
+- `world`: `MAIN`
+- `timeout`: `10000`
+- `jsScript`:
+```javascript
+async () => {
+  // {noteId} 替换为当前要采集的笔记 ID
+  const cover = document.querySelector('section.note-item a.cover[href*="{noteId}"]');
+  if (!cover) return JSON.stringify({error: 'no cover for {noteId}'});
+  cover.click();
+  await new Promise(r => setTimeout(r, 2000));
+  return JSON.stringify({clicked: true});
+}
+```
+
+**说明**：通过 CSS 选择器精准定位到包含目标 noteId 的封面链接并点击。点击后会在新 tab 中打开笔记详情页。等待 2 秒让新 tab 加载。
+
+#### 子步骤 B：找到新打开的 tab
+
+**工具**：`get_windows_and_tabs`
+
+**说明**：调用后在返回的 tabs 列表中查找 URL 包含当前 noteId 的 tab，记录其 tabId。
+
+#### 子步骤 C：从新 tab 提取笔记详情
+
+**工具**：`chrome_execute_script`
+
+**参数**：
+- `tabId`: `{子步骤 B 找到的新 tab ID}`
+- `world`: `MAIN`
+- `timeout`: `15000`
+- `jsScript`:
+```javascript
+() => {
+  try {
+    const noteMap = JSON.parse(JSON.stringify(
+      window.__INITIAL_STATE__.note.noteDetailMap
+    ));
+    const noteIds = Object.keys(noteMap).filter(
+      k => k !== 'undefined' && noteMap[k].note && noteMap[k].note.noteId
+    );
+    if (noteIds.length === 0) return JSON.stringify({error: 'no notes in map'});
+    const n = noteMap[noteIds[0]].note;
+    return JSON.stringify({
+      noteId: n.noteId,
+      title: n.title || n.displayTitle || '',
+      desc: (n.desc || ''),
+      tagList: (n.tagList || []).map(t => ({name: t.name, type: t.type})),
+      type: n.type,
+      time: n.time,
+      interactInfo: n.interactInfo ? {
+        likedCount: n.interactInfo.likedCount || '0',
+        collectedCount: n.interactInfo.collectedCount || '0',
+        commentCount: n.interactInfo.commentCount || '0'
+      } : null,
+      imageCount: n.imageList ? n.imageList.length : 0
+    });
+  } catch(e) {
+    return JSON.stringify({error: e.message});
+  }
+}
+```
+
+**输出**：笔记详情（noteId / title / desc / tagList / type / time / interactInfo / imageCount）
+
+**数据结构**：
+```json
+{
+  "noteId": "69780ffe000000000a02faeb",
+  "title": "笔记标题",
+  "desc": "笔记正文内容...\n#标签1[话题]# #标签2[话题]#",
+  "tagList": [
+    {"name": "标签名", "type": "topic"}
+  ],
+  "type": "normal",
+  "time": 1769476094000,
+  "interactInfo": {
+    "likedCount": "123",
+    "collectedCount": "45",
+    "commentCount": "6"
+  },
+  "imageCount": 3
+}
+```
+
+#### 子步骤 D：关闭新 tab
+
+**工具**：`chrome_close_tabs`
+
+**参数**：
+- `tabIds`: `[{子步骤 B 的 tabId}]`
+
+**说明**：关闭详情页 tab，防止 tab 堆积导致浏览器卡顿。
+
+#### 笔记详情采集的注意事项
+
+1. **noteId 来源**：使用步骤4采集到的笔记列表，或从 `__INITIAL_STATE__.user.notes` 中提取
+2. **速度控制**：每条笔记间隔 2-3 秒，避免触发反爬
+3. **错误处理**：如果某条笔记提取失败（如已删除/下架），跳过继续下一条
+4. **视频笔记**：type 为 `video` 的笔记 desc 可能为空或很短，这是正常的
+5. **上限控制**：最多采集 50 条笔记详情，防止笔记数量过大时耗时过长
 
 ---
 
