@@ -222,23 +222,13 @@ magic-mirror/
 
 ### 数据持久化（⚠️ 必须执行）
 
-**每个平台采集完毕后，立即将该平台的全量原始数据写入本地文件。每完成一个就保存一个，不要等全部完成。**
+**所有 ClawCap Skill 共享 `clawcap-data/` 目录**。采集前先检查是否已有数据可复用：
 
-```
-目标目录：{工作目录}/mirror-data/
+- `clawcap-data/self/{platform}.json` 存在 + < 7天 → **直接复用**，跳过采集
+- 存在 + > 7天 → 询问用户是否重新采集
+- 不存在 → 正常采集
 
-每个平台单独一个文件：
-  mirror-data/douyin.json
-  mirror-data/xiaohongshu.json
-  mirror-data/weibo.json
-  mirror-data/douban.json
-  mirror-data/bilibili.json
-  mirror-data/metadata.json
-```
-
-**执行方式**：子 Skill 的 JS 脚本将数据 `return JSON.stringify(...)` 返回到上下文后，**你必须立即将完整 JSON 写入对应文件**。
-
-**保存完整数据，不是摘要**：完整的收藏标题列表、完整的评分列表、完整的关注列表。这些原始数据用于反差分析的精确对比，也可被其他 Skill 复用。
+**每个平台采集完毕后，立即将全量原始数据写入 `clawcap-data/self/{platform}.json`**。每完成一个就保存一个。保存完整数据（全部标题/评分/列表），不是摘要。报告输出到 `clawcap-data/reports/mirror_{日期}.md`。
 
 ---
 
