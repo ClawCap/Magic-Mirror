@@ -218,7 +218,27 @@ magic-mirror/
 2. **记录数量**：每个维度的总数很重要（"想读89本"比"想读了一些书"有冲击力）
 3. **提取标签/分类**：标签比正文更容易做聚类分析
 4. **容错处理**：某个 tab 打不开或没内容就跳过，不中断整个流程
-5. **每个平台采集完保存**：写入 `mirror-reports/{日期}_raw_data.json`，防止中断丢失
+5. **每个平台采集完保存**：见下方「数据持久化」
+
+### 数据持久化（⚠️ 必须执行）
+
+**每个平台采集完毕后，立即将该平台的全量原始数据写入本地文件。每完成一个就保存一个，不要等全部完成。**
+
+```
+目标目录：{工作目录}/mirror-data/
+
+每个平台单独一个文件：
+  mirror-data/douyin.json
+  mirror-data/xiaohongshu.json
+  mirror-data/weibo.json
+  mirror-data/douban.json
+  mirror-data/bilibili.json
+  mirror-data/metadata.json
+```
+
+**执行方式**：子 Skill 的 JS 脚本将数据 `return JSON.stringify(...)` 返回到上下文后，**你必须立即将完整 JSON 写入对应文件**。
+
+**保存完整数据，不是摘要**：完整的收藏标题列表、完整的评分列表、完整的关注列表。这些原始数据用于反差分析的精确对比，也可被其他 Skill 复用。
 
 ---
 
