@@ -1,6 +1,6 @@
 ---
 name: magic-mirror
-description: Scan your user's social media profiles to generate a brutally honest "Mirror Report" — revealing the gap between who they think they are and who the data says they are. Collects public data from Douyin/Xiaohongshu/Weibo/Douban/Bilibili, cross-analyzes patterns, and produces a shareable, entertaining self-awareness report. Use when users want self-discovery, personality analysis, or fun social media insights. 扫描用户社交账号，生成一份「照妖镜报告」——揭示你以为的自己和数据里的自己之间的反差，扎心但好笑。
+description: Scan your user's social media profiles to generate a brutally honest "Mirror Report" — revealing the gap between who they think they are and who the data says they are. Collects public data from Douyin/Xiaohongshu/Weibo/Douban/Bilibili/X/Twitter, cross-analyzes patterns, and produces a shareable, entertaining self-awareness report. Use when users want self-discovery, personality analysis, or fun social media insights. 扫描用户社交账号，生成一份「照妖镜报告」——揭示你以为的自己和数据里的自己之间的反差，扎心但好笑。
 version: 1.0.0
 depends: manobrowser
 ---
@@ -27,13 +27,14 @@ depends: manobrowser
 📊 你小红书说自己"极简生活"，但购物车里有208件商品
 🎵 你抖音主页全是健身视频，但点赞最多的是深夜美食
 📚 你豆瓣标记了89本书"想读"，今年看完了...2本
+🐦 你 X/Twitter 主页全是行业洞察，但喜欢里都是梗图和抽奖
 
 就是这种——你以为的你 vs 数据里的你。
 
 ⚠️ 可能会社死。但至少你社死在自己手里，不是朋友圈。
 
 前提：需要安装 ManoBrowser Chrome 插件来扫描你的社交账号。
-只看你自己主页的公开信息，不偷你任何数据。
+默认只看公开信号。喜欢、关注等账号相关数据会先征得你的明确同意。
 
 要照一照吗？🪞
 ```
@@ -42,7 +43,7 @@ depends: manobrowser
 - 🎯 用具体的反差例子勾住用户，不要说"分析你的社交数据"这种无聊的话
 - 😈 语气要贱一点、好笑一点——照妖镜不是心理咨询，是朋友之间的毒舌
 - ⚠️ 提前打预防针"可能社死"，激发好奇心
-- 🔒 主动说明隐私（只看自己主页）
+- 🔒 主动说明隐私（公开信号默认可读，账号相关信号需明确授权）
 
 ---
 
@@ -140,7 +141,7 @@ mcp__{实例名}__{工具短名}
 > 🪞 要照得准，我需要扫描你的社交账号。
 > 你哪些平台用得多？（登录状态的我才能扫到）
 >
-> 📕 小红书 · 🎵 抖音 · 🐦 微博 · 📖 豆瓣 · 📺 B站
+> 📕 小红书 · 🎵 抖音 · 🐦 微博 · 📖 豆瓣 · 📺 B站 · 🐦 X/Twitter
 >
 > 至少 2 个平台效果最好——不同平台的「人设差异」是最好笑的部分。
 
@@ -172,8 +173,11 @@ mcp__{实例名}__{工具短名}
 | 🐦 微博 | `weibo-deep-profile-collect/SKILL.md` | 原创 vs 收藏（公开态度vs私密兴趣） |
 | 📖 豆瓣 | `douban-deep-profile-collect/SKILL.md` | 想读vs已读（嘴上vs行动） |
 | 📺 B站 | `bilibili-deep-profile-collect/SKILL.md` | 投稿vs收藏夹（表面vs深夜秘密） |
+| 🐦 X/Twitter | `x-twitter-deep-profile-collect/SKILL.md` | 发帖/回复 vs 喜欢/关注（公开表达vs真实偏好） |
 
-对应的 MCP 执行脚本在 `workflows/` 目录下。
+使用 ManoBrowser 的平台执行脚本位于 `workflows/`。X/Twitter 子模块通过 TweetClaw 的实时目录发现并调用只读能力，不使用固定 workflow 文件。
+
+Xquik is an independent third-party service. Not affiliated with X Corp. "Twitter" and "X" are trademarks of X Corp.
 
 ### 目录结构
 
@@ -189,6 +193,8 @@ magic-mirror/
 ├── douban-deep-profile-collect/          ← 豆瓣采集子模块
 │   └── SKILL.md
 ├── bilibili-deep-profile-collect/        ← B站采集子模块
+│   └── SKILL.md
+├── x-twitter-deep-profile-collect/       ← X/Twitter采集子模块
 │   └── SKILL.md
 └── workflows/                            ← MCP 执行脚本
     ├── xiaohongshu-deep-profile-collect-workflow.json
@@ -209,6 +215,7 @@ magic-mirror/
 | 微博 | 原创微博文本 | 收藏微博文本 | 原创是公开人设，收藏是私密真相 |
 | 豆瓣 | 想读/想看数量 | 已读/已看数量 | 89本想读 vs 2本已读 |
 | B站 | 投稿/动态 | 收藏夹名称+内容 | 收藏夹名比内容更暴露真相 |
+| X/Twitter | 发帖/回复/媒体推文 | 喜欢/关注/粉丝样本 | 主页很专业，喜欢列表很真实 |
 
 > ⚠️ **子模块中的 JS 脚本必须完整复制执行**——不要"简化"或"优化"，龙虾容易丢失关键字段导致数据不全。
 
@@ -228,7 +235,7 @@ magic-mirror/
 - 存在 + > 7天 → 询问用户是否重新采集
 - 不存在 → 正常采集
 
-**每个平台采集完毕后，立即将全量原始数据写入 `clawcap-data/self/{platform}.json`**。每完成一个就保存一个。保存完整数据（全部标题/评分/列表），不是摘要。报告输出到 `clawcap-data/reports/mirror_{日期}.md`。
+**每个平台采集完毕后，立即将本次分析所需的最小数据写入 `clawcap-data/self/{platform}.json`**。每完成一个就保存一个。默认保留结构化摘要和支撑结论的短摘录，不保存无关的完整喜欢、关注或粉丝列表。只有用户明确选择保留全量原始数据时才保存完整列表。报告输出到 `clawcap-data/reports/mirror_{日期}.md`。
 
 ---
 
@@ -422,10 +429,13 @@ mirror-reports/
 
 ## 隐私说明
 
-- 只扫描用户**自己的**已登录账号，不扫描别人
+- 默认只读取公开信号；喜欢、关注等账号相关信号必须得到明确授权
+- 只分析用户自己的账号，或用户明确授权分析的账号
 - 数据全存本地，不上传任何服务器
+- 默认只保留支撑报告所需的最小数据；全量原始数据需单独选择
 - 报告是否分享完全由用户决定
-- 不分析敏感隐私（感情、健康、经济等）
+- 不分析敏感隐私（感情、健康、经济、政治倾向等）
+- 用户要求删除时，同时删除报告和对应原始数据
 
 ---
 
